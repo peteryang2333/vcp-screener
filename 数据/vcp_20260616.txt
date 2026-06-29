@@ -1,0 +1,41 @@
+/Users/a1/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+
+8 Failed downloads:
+['BBD', 'OWL', 'RKLB', 'ORCL', 'ABEV', 'RIVN', 'PBR', 'FRSH']: TypeError("'NoneType' object is not subscriptable")
+======================================================================
+  VCP 扫描器 | 2026-06-16 14:03
+  数据源: Yahoo Finance (yfinance)
+======================================================================
+  [网络检测] 测试以下站点...
+    Google     [OK]
+    YouTube    [OK]
+    Yahoo      [OK]
+    GitHub     [OK]
+  ✅ 网络正常
+
+📡 获取最活跃股票列表...
+  正在获取雅虎最活跃 100 强...
+  获取到 100 只标的
+  前5: AAL, NOK, INTC, NVDA, GRAB
+
+📊 开始扫描 100 只标的...
+
+  📥 第 1 批 (50 只)...
+    ✅ F: 振幅 9.1%  缩量 70.4%
+  📥 第 2 批 (50 只)...
+    ✅ PCG: 振幅 4.5%  缩量 47.0%
+
+======================================================================
+
+🎯 发现 2 只 VCP 形态标的：
+
+ 代码  当前价格  50日均线  5日振幅%  缩量比例%  突破挂单价  距突破%
+PCG 16.95  16.81   4.45  46.97  17.13  1.06
+  F 14.84  13.31   9.15  70.37  15.39  3.71
+
+----------------------------------------------------------------------
+💡 距突破% 越接近 0 越好，放量突破挂单价时考虑介入
+======================================================================
+
+--- 运行时间: 2026-06-16 14:03:39 CST ---
