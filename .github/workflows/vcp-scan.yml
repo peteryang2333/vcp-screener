@@ -2,12 +2,10 @@ name: VCP 多市场扫描
 
 on:
   schedule:
-    # UTC 时间 = CST - 8小时
-    # 美股 5:30 CST = 21:30 UTC (前一日)
     - cron: '30 21 * * 1-5'    # 🇺🇸 美股 5:30 CST (周二~六)
     - cron: '0 7 * * 1-5'      # 🇯🇵 日本 15:00 CST
     - cron: '30 7 * * 1-5'     # 🇰🇷 韩国 15:30 CST
-  workflow_dispatch:           # 可手动触发
+  workflow_dispatch:
     inputs:
       market:
         description: '市场 (us/jp/kr/all)'
@@ -18,20 +16,15 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
 
-      - name: 设置 Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
 
       - name: 安装依赖
-        run: |
-          pip install yfinance pandas lxml requests
+        run: pip install yfinance pandas lxml requests
 
       - name: 确定扫描市场
         id: market
@@ -39,13 +32,11 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "market=${{ github.event.inputs.market }}" >> $GITHUB_OUTPUT
           else
-            # 根据触发时间判断市场
             HOUR=$(date -u +%H)
             if [ "$HOUR" = "21" ]; then
               echo "market=us" >> $GITHUB_OUTPUT
             elif [ "$HOUR" = "07" ]; then
-              MINUTE=$(date -u +%M)
-              if [ "$MINUTE" -lt "30" ]; then
+              if [ "$(date -u +%M)" -lt "30" ]; then
                 echo "market=jp" >> $GITHUB_OUTPUT
               else
                 echo "market=kr" >> $GITHUB_OUTPUT
@@ -55,35 +46,14 @@ jobs:
             fi
           fi
 
-      - name: 下载 SP 成分股列表
-        run: |
-          python3 -c "
-import pandas as pd, os
-
-def save_wiki(url, fpath, col='Symbol'):
-    tables = pd.read_html(url, flavor='lxml')
-    for t in tables:
-        if col in t.columns:
-            tickers = t[col].dropna().astype(str).str.replace('.', '-').str.strip().tolist()
-            tickers = [s for s in tickers if s and not s.startswith('^') and 'S&P' not in s]
-            with open(fpath, 'w') as f:
-                for sym in tickers:
-                    f.write(sym + '\n')
-            print('  %s: %d 只' % (os.path.basename(fpath), len(tickers)))
-            return True
-    return False
-
-save_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', 'sp500.csv')
-save_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 'sp400.csv')
-"
+      - name: 下载 SP 成分股
+        run: python3 .github/scripts/download_sp.py
 
       - name: 运行 VCP 扫描
-        run: |
-          python3 vcp_screener.py --market ${{ steps.market.outputs.market }} --pool sp900 2>&1 | tee scan_result.txt
+        run: python3 vcp_screener.py --market ${{ steps.market.outputs.market }} --pool sp900 2>&1 | tee scan_result.txt
 
       - name: 更新信号跟踪表
-        run: |
-          python3 vcp_tracker.py --scan-all 2>&1 || true
+        run: python3 vcp_tracker.py --scan-all || true
 
       - name: 提交结果
         run: |
