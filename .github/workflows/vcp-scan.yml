@@ -63,4 +63,4 @@ jobs:
           git pull --rebase origin main || true
           git add 数据/ sp500.csv sp400.csv
           git diff --staged --quiet || git commit -m "📊 VCP 扫描结果 $(date +'%Y-%m-%d')"
-          git push
+          git push --force
