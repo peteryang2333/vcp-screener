@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """下载 SP 500 + SP 400 成分股并保存为 CSV"""
-import pandas as pd, os, sys
+import pandas as pd, os, sys, requests
 
 def save_wiki(url, fpath, col='Symbol'):
-    tables = pd.read_html(url, flavor='lxml')
+    # 用 requests + 浏览器标头绕过 Wikipedia 403
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    resp = requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    tables = pd.read_html(resp.text, flavor='lxml')
     for t in tables:
         if col in t.columns:
             tickers = t[col].dropna().astype(str).str.replace('.', '-').str.strip().tolist()
