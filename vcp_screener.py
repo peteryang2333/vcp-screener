@@ -1,118 +1,249 @@
-#!/bin/bash
-# VCP Screener 多市场每日运行脚本
-# 兼容 Mac 本地与 GitHub Actions 云端
-set -e # 遇到错误立即退出
+#!/usr/bin/env python3
+"""
+VCP (Volatility Contraction Pattern) 扫描器
+每日扫描美股最活跃 100 强，筛选缩量整理形态
+数据源: Yahoo Finance (yfinance — 内置 cookie/crumb 验证，避免 429)
+"""
 
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy NO_PROXY no_proxy
+import os
+for k in ['http_proxy','https_proxy','HTTP_PROXY','HTTPS_PROXY',
+          'ALL_PROXY','all_proxy','NO_PROXY','no_proxy']:
+    os.environ.pop(k, None)
 
-MARKET="${1:-all}"
-POOL="${2:-sp900}"  
-FAST="${3:-}"       
+import yfinance as yf
+import pandas as pd
+import warnings
+import sys
+import time
+from datetime import datetime
+import requests as req
+import argparse
 
-# 🔧 修复核心 1：使用动态相对路径，彻底告别 $HOME 报错
-# 获取当前脚本所在的绝对路径作为根目录
-VCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RESULT_DIR="$VCP_DIR/数据"
-TRACKER="$VCP_DIR/vcp_tracker.py"
-mkdir -p "$RESULT_DIR"
+warnings.filterwarnings('ignore')
 
-# 🔧 修复核心 2：静默安装依赖，防止云端环境缺少包
-pip3 install requests pandas lxml scipy -q 2>/dev/null || true
+# ================== 参数 ==================
+TIGHT_DAYS = 5
+TIGHTNESS_LIMIT = 0.10
+VOL_RATIO = 0.75
+MIN_PRICE = 2.0
+MIN_VOLUME = 100000
+MIN_DATA_DAYS = 60
+BATCH_SIZE = 50
+REQUEST_DELAY = 1.5  # 每次请求间隔，防 429
 
-# 如果 SP 900 模式且本地没有 CSV，自动从 Wikipedia 下载并缓存
-if [ "$POOL" = "sp900" ]; then
-  if [ ! -f "$VCP_DIR/sp500.csv" ] || [ ! -f "$VCP_DIR/sp400.csv" ]; then
-    echo "📥 发现缺少股票池文件，正在从 Wikipedia 下载 SP 500 / SP 400 成分股列表..."
 
-    /usr/bin/python3 -c "
-import requests as req, pandas as pd, os
-from io import StringIO
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+def check_network():
+    """检查网络连通性"""
+    sites = [
+        ("Google",  "https://www.google.com"),
+        ("YouTube", "https://www.youtube.com"),
+        ("Yahoo",   "https://finance.yahoo.com"),
+        ("GitHub",  "https://github.com"),
+    ]
+    sess = req.Session()
+    sess.trust_env = False
+    sess.proxies = None
+    sess.headers.update({"User-Agent": "Mozilla/5.0"})
 
-def save_wiki(url, fpath, col='Symbol'):
+    print("  [网络检测] 测试以下站点...")
+    all_ok = True
+    for name, url in sites:
+        try:
+            r = sess.get(url, timeout=5)
+            status = "OK" if r.status_code < 400 else "HTTP %d" % r.status_code
+            print("    %-10s [%s]" % (name, status))
+        except Exception as e:
+            reason = str(e)
+            if "resolve" in reason.lower() or "dns" in reason.lower():
+                reason = "DNS 解析失败"
+            elif "timeout" in reason.lower():
+                reason = "连接超时"
+            elif "proxy" in reason.lower() or "tunnel" in reason.lower():
+                reason = "代理拦截"
+            else:
+                reason = reason.split(".")[0][:40]
+            print("    %-10s ❌ %s" % (name, reason))
+            all_ok = False
+    if not all_ok:
+        print("\n  ⚠️  部分站点无法访问，请检查 VPN/代理/网络后重试。")
+        return False
+    print("  ✅ 网络正常\n")
+    return True
+
+
+def load_custom_pool(pool_name):
+    """从本地 CSV 加载自定义股票池"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(base_dir, f"{pool_name}.csv")
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path, header=None)
+            tickers = df[0].astype(str).str.strip().tolist()
+            tickers = [t for t in tickers if t and not t.startswith('#')]
+            print("  ✅ 从 %s 加载了 %d 只股票" % (pool_name, len(tickers)))
+            return tickers
+        except Exception as e:
+            print("  ⚠️  加载 %s 失败: %s" % (pool_name, e))
+    return []
+
+
+def get_most_active(limit=100):
+    """yfinance 内置 screener — 当日最活跃美股"""
+    print("  正在获取雅虎最活跃 %d 强..." % limit)
     try:
-        r = req.get(url, headers=HEADERS, timeout=20)
-        r.raise_for_status()
-        tables = pd.read_html(StringIO(r.text))
-        for t in tables:
-            if col in t.columns:
-                tickers = t[col].dropna().astype(str).str.replace('.', '-').str.strip().tolist()
-                tickers = [s for s in tickers if s and not s.startswith('^') and 'S&P' not in s]
-                with open(fpath, 'w') as f:
-                    for sym in tickers:
-                        f.write(sym + '\n')
-                print('      ✅ 保存 %d 只到 %s' % (len(tickers), os.path.basename(fpath)))
-                return True
-        print('      ⚠️ 未找到 %s 列的表格' % col)
+        data = yf.screen('most_actives', size=limit,
+                         sortField='dayvolume', sortAsc=False)
+        if not data or 'quotes' not in data:
+            print("  screener 返回异常: %s" % (list(data.keys()) if data else "空"))
+            return []
+        tickers = [q['symbol'] for q in data['quotes']
+                   if q.get('symbol') and q['symbol'] != '^GSPC']
+        print("  获取到 %d 只标的" % len(tickers))
+        if tickers:
+            print("  前5: %s" % ", ".join(tickers[:5]))
+        return tickers
     except Exception as e:
-        print('      ❌ 失败: %s' % e)
-    return False
+        print("  screener 失败: %s" % e)
+        return []
 
-dir = '$VCP_DIR'
-save_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', dir + '/sp500.csv')
-save_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', dir + '/sp400.csv')
-" 2>&1
 
-    if [ -f "$VCP_DIR/sp500.csv" ] && [ -s "$VCP_DIR/sp500.csv" ]; then
-      echo "  ✅ sp500.csv: $(wc -l < "$VCP_DIR/sp500.csv") 只"
-    fi
-  else
-      echo "  ✅ 已检测到本地 sp500/sp400.csv 缓存，跳过抓取。"
-  fi
-fi
+def scan_vcp(tickers):
+    """批量下载 + VCP 筛选"""
+    if not tickers:
+        return []
 
-# 映射市场到文件标签
-case "$MARKET" in
-  us) TAG="US" ;;
-  jp) TAG="JP" ;;
-  kr) TAG="KR" ;;
-  all) TAG="" ;;
-esac
+    results = []
+    for i in range(0, len(tickers), BATCH_SIZE):
+        batch = tickers[i:i + BATCH_SIZE]
+        print("  📥 第 %d 批 (%d 只)..." % (i//BATCH_SIZE + 1, len(batch)))
 
-if [ "$MARKET" = "all" ]; then
-  echo "=========================================="
-  echo "  🌏 多市场 VCP 扫描 | $(date '+%Y-%m-%d %H:%M')"
-  echo "=========================================="
+        try:
+            # 修复：移除已弃用的 group_by 参数
+            raw = yf.download(" ".join(batch), period="6mo",
+                              auto_adjust=True,
+                              progress=False)
+        except Exception as e:
+            print("    ⚠️  批次下载失败: %s" % str(e)[:60])
+            time.sleep(REQUEST_DELAY)
+            continue
 
-  for m in us jp kr; do
-    case $m in
-      us) label="US" ; name="🇺🇸 美股" ;;
-      jp) label="JP" ; name="🇯🇵 日本" ;;
-      kr) label="KR" ; name="🇰🇷 韩国" ;;
-    esac
+        for ticker in batch:
+            try:
+                if len(batch) == 1:
+                    df = raw
+                elif isinstance(raw.columns, pd.MultiIndex):
+                    df = raw[ticker]
+                else:
+                    continue
 
-    OUTFILE="$RESULT_DIR/vcp_${label}_$(date +%Y%m%d).txt"
-    echo "" | tee -a "$OUTFILE"
-    echo ">>> $name <<<" | tee -a "$OUTFILE"
+                df = df.dropna()
+                if len(df) < MIN_DATA_DAYS:
+                    continue
 
-    /usr/bin/python3 "$VCP_DIR/vcp_screener.py" --market "$m" --pool "$POOL" $FAST 2>&1 | tee -a "$OUTFILE"
-    echo "" >> "$OUTFILE"
-    echo "--- 运行时间: $(date '+%Y-%m-%d %H:%M:%S %Z') ---" >> "$OUTFILE"
+                close = df['Close'].squeeze()
+                high = df['High'].squeeze()
+                low = df['Low'].squeeze()
+                vol = df['Volume'].squeeze()
+
+                lc = float(close.iloc[-1])
+                lv = float(vol.iloc[-1])
+                if lc < MIN_PRICE or lv < MIN_VOLUME:
+                    continue
+
+                sma50 = close.rolling(50).mean()
+                vol_avg = vol.rolling(50).mean()
+                h5 = high.rolling(TIGHT_DAYS).max()
+                l5 = low.rolling(TIGHT_DAYS).min()
+
+                sma50_v = float(sma50.iloc[-1])
+                vol_avg_v = float(vol_avg.iloc[-1])
+                h5_v = float(h5.iloc[-1])
+                l5_v = float(l5.iloc[-1])
+
+                if lc <= sma50_v or l5_v <= 0 or vol_avg_v <= 0:
+                    continue
+                amplitude = (h5_v - l5_v) / l5_v
+                if amplitude > TIGHTNESS_LIMIT:
+                    continue
+                vol_ratio = lv / vol_avg_v
+                if vol_ratio >= VOL_RATIO:
+                    continue
+
+                results.append({
+                    '代码': ticker,
+                    '当前价格': round(lc, 2),
+                    '50日均线': round(sma50_v, 2),
+                    '5日振幅%': round(amplitude * 100, 2),
+                    '缩量比例%': round(vol_ratio * 100, 2),
+                    '突破挂单价': round(h5_v, 2),
+                    '距突破%': round((h5_v / lc - 1) * 100, 2),
+                })
+                print("    ✅ %s: 振幅 %.1f%%  缩量 %.1f%%" % (
+                    ticker, amplitude*100, vol_ratio*100))
+
+            except Exception:
+                continue
+
+        time.sleep(REQUEST_DELAY)  # 批次间隔，防 429
+
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser(description='VCP 股票扫描器')
+    parser.add_argument('--market', default='us', choices=['us', 'jp', 'kr'],
+                        help='市场代码 (默认: us)')
+    parser.add_argument('--pool', default='sp900',
+                        help='股票池名称，如 sp500, sp400, sp900 (默认: sp900)')
+    parser.add_argument('--fast', action='store_true',
+                        help='快速模式：减少请求延迟')
     
-    # 🔧 修复核心 3：生成 Markdown 分析报告，取代软链接
-    if [ "$m" = "us" ]; then
-        cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
-        echo "  📝 已生成美股最新分析报告.md"
-    fi
+    args = parser.parse_args()
+    
+    # 如果使用快速模式，减少延迟
+    global REQUEST_DELAY
+    if args.fast:
+        REQUEST_DELAY = 0.5
+    
+    print("=" * 70)
+    print("  VCP 扫描器 | %s" % datetime.now().strftime('%Y-%m-%d %H:%M'))
+    print("  数据源: Yahoo Finance (yfinance)")
+    print("  市场: %s | 股票池: %s" % (args.market, args.pool))
+    print("=" * 70)
 
-    # 记录到跟踪表
-    /usr/bin/python3 "$TRACKER" --scan-all 2>/dev/null
-  done
+    if not check_network():
+        print("\n请先修复网络，然后再试。")
+        sys.exit(1)
 
-  echo ""
-  echo "=========================================="
-  echo "  ✅ 全部市场扫描完成"
-  echo "=========================================="
-else
-  OUTFILE="$RESULT_DIR/vcp_${TAG}_$(date +%Y%m%d).txt"
-  /usr/bin/python3 "$VCP_DIR/vcp_screener.py" --market "$MARKET" --pool "$POOL" $FAST 2>&1 | tee "$OUTFILE"
-  echo "" >> "$OUTFILE"
-  echo "--- 运行时间: $(date '+%Y-%m-%d %H:%M:%S %Z') ---" >> "$OUTFILE"
-  
-  if [ "$MARKET" = "us" ]; then
-      cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
-  fi
+    # 尝试从本地加载自定义股票池
+    print("📡 获取股票列表...")
+    all_tickers = load_custom_pool(args.pool)
+    
+    # 如果本地没有，则从雅虎获取最活跃
+    if not all_tickers:
+        print("  本地股票池文件未找到，改用最活跃列表...")
+        all_tickers = get_most_active(100)
+    
+    if not all_tickers:
+        print("\n❌ 无法获取股票列表，退出。")
+        sys.exit(1)
 
-  # 记录到跟踪表
-  /usr/bin/python3 "$TRACKER" --scan-all 2>/dev/null
-fi
+    print("\n📊 开始扫描 %d 只标的...\n" % len(all_tickers))
+    found = scan_vcp(all_tickers)
+
+    print("\n" + "=" * 70)
+    if found:
+        df = pd.DataFrame(found).sort_values('距突破%')
+        print("\n🎯 发现 %d 只 VCP 形态标的：\n" % len(found))
+        pd.set_option('display.max_columns', 10)
+        pd.set_option('display.width', 120)
+        print(df.to_string(index=False))
+        print("\n" + "-" * 70)
+        print("💡 距突破% 越接近 0 越好，放量突破挂单价时考虑介入")
+    else:
+        print("\n👀 今日活跃池中无符合 VCP 形态的标的。")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    main()
