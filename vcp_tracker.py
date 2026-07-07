@@ -5,15 +5,23 @@ VCP 信号跟踪器
 """
 
 import os
-for k in ['http_proxy','https_proxy','HTTP_PROXY','HTTPS_PROXY',
-          'ALL_PROXY','all_proxy','NO_PROXY','no_proxy']:
-    os.environ.pop(k, None)
-
 import pandas as pd
 import sys
 from datetime import datetime
 
-TRACKER_FILE = os.path.expanduser("~/Claude/VCP/数据/VCP_信号跟踪表.csv")
+for k in ['http_proxy','https_proxy','HTTP_PROXY','HTTPS_PROXY',
+          'ALL_PROXY','all_proxy','NO_PROXY','no_proxy']:
+    os.environ.pop(k, None)
+
+# ====== 🚀 修复核心：动态获取当前根路径 ======
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "数据")
+TRACKER_FILE = os.path.join(DATA_DIR, "VCP_信号跟踪表.csv")
+
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+# ============================================
+
 COLUMNS = [
     '信号日期', '市场', '代码', '当前价格', '50日均线',
     '5日振幅%', '缩量比例%', '突破挂单价', '距突破%',
@@ -151,88 +159,3 @@ def append_signals(market_tag, signals, signal_date):
         print("  ✅ 跟踪表已更新: 新增 %d 条记录" % new_count)
     else:
         print("  📎 无新信号，跟踪表不变")
-
-    return new_count
-
-
-def review_tracker():
-    """显示跟踪表内容"""
-    df = load_tracker()
-    if df.empty:
-        print("跟踪表为空")
-        return
-
-    df = df.sort_values(['信号日期', '市场', '距突破%'])
-    pd.set_option('display.max_columns', 15)
-    pd.set_option('display.width', 150)
-    pd.set_option('display.max_rows', 100)
-
-    print("\n" + "=" * 90)
-    print("  📊 VCP 信号跟踪总表（共 %d 条记录）" % len(df))
-    print("=" * 90)
-    print(df.to_string(index=False))
-    print("=" * 90)
-    print("  保存位置: %s" % TRACKER_FILE)
-    print()
-
-
-def get_market_tag(filename):
-    """从文件名判断市场"""
-    fn = filename.replace('.txt', '')
-    if fn.startswith('vcp_JP'): return 'JP'
-    if fn.startswith('vcp_KR'): return 'KR'
-    if fn.startswith('vcp_'): return 'US'
-    return None
-
-
-def get_file_date(filename):
-    """从文件名提取日期"""
-    fn = filename.replace('.txt', '')
-    try:
-        if fn.startswith('vcp_JP_'):
-            return datetime.strptime(fn.replace('vcp_JP_', ''), '%Y%m%d')
-        if fn.startswith('vcp_KR_'):
-            return datetime.strptime(fn.replace('vcp_KR_', ''), '%Y%m%d')
-        if fn.startswith('vcp_'):
-            return datetime.strptime(fn.replace('vcp_', ''), '%Y%m%d')
-    except ValueError:
-        return None
-    return None
-
-
-def scan_old_results():
-    """扫描已有结果文件，一次性补录历史信号"""
-    data_dir = os.path.expanduser("~/Claude/VCP/数据")
-
-    total = 0
-    for root, dirs, files in os.walk(data_dir):
-        for f in sorted(files):
-            if not f.endswith('.txt') or f.startswith('最新') or f.startswith('VCP'):
-                continue
-
-            filepath = os.path.join(root, f)
-            market_tag = get_market_tag(f)
-            file_date = get_file_date(f)
-
-            if market_tag is None or file_date is None:
-                continue
-
-            signals = parse_results_file(filepath, market_tag)
-            if signals:
-                n = append_signals(market_tag, signals, file_date)
-                total += n
-
-    if total > 0:
-        print("\n  📊 历史信号补录完成，共新增 %d 条" % total)
-    return total
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == '--review':
-        review_tracker()
-    elif len(sys.argv) > 1 and sys.argv[1] == '--scan-all':
-        scan_old_results()
-    else:
-        print("用法:")
-        print("  python3 vcp_tracker.py --scan-all   # 扫描历史结果并补录")
-        print("  python3 vcp_tracker.py --review     # 查看跟踪表")
