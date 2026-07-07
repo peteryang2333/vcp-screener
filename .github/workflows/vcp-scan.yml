@@ -1,66 +1,40 @@
-name: VCP 多市场扫描
+name: Daily Quant Signal
 
 on:
   schedule:
-    - cron: '30 21 * * 1-5'    # 🇺🇸 美股 5:30 CST (周二~六)
-    - cron: '0 7 * * 1-5'      # 🇯🇵 日本 15:00 CST
-    - cron: '30 7 * * 1-5'     # 🇰🇷 韩国 15:30 CST
+    - cron: '45 19 * * 1-5'
   workflow_dispatch:
-    inputs:
-      market:
-        description: '市场 (us/jp/kr/all)'
-        required: true
-        default: 'all'
 
 jobs:
-  scan:
+  run-strategy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.ACTIONS_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: 安装依赖
-        run: pip install yfinance pandas lxml requests
+      - name: Install dependencies
+        run: pip install yfinance pandas numpy
 
-      - name: 确定扫描市场
-        id: market
+      - name: Run Strategy Script
+        env:
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+        run: python daily_signal.py
+
+      - name: Commit results
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "market=${{ github.event.inputs.market }}" >> $GITHUB_OUTPUT
-          else
-            HOUR=$(date -u +%H)
-            if [ "$HOUR" = "21" ]; then
-              echo "market=us" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" = "07" ]; then
-              if [ "$(date -u +%M)" -lt "30" ]; then
-                echo "market=jp" >> $GITHUB_OUTPUT
-              else
-                echo "market=kr" >> $GITHUB_OUTPUT
-              fi
-            else
-              echo "market=all" >> $GITHUB_OUTPUT
-            fi
-          fi
-
-      - name: 下载 SP 成分股
-        run: python3 .github/scripts/download_sp.py
-
-      - name: 运行 VCP 扫描
-        run: python3 vcp_screener.py --market ${{ steps.market.outputs.market }} --pool sp900 2>&1 | tee scan_result.txt
-
-      - name: 更新信号跟踪表
-        run: python3 vcp_tracker.py --scan-all || true
-
-      - name: 提交结果
-        run: |
-          git config user.name "VCP Bot"
-          git config user.email "vcp-bot@github.com"
-          git pull --rebase origin main || true
-          git add 数据/ sp500.csv sp400.csv
-          git diff --staged --quiet || git commit -m "📊 VCP 扫描结果 $(date +'%Y-%m-%d')"
-          git push --force
+          mkdir -p results
+          cp result.txt "results/$(date +'%Y-%m-%d').txt"
+          cp result.txt results/最新.txt
+          git config user.name "Signal Bot"
+          git config user.email "signal-bot@github.com"
+          git add results/
+          git diff --staged --quiet || git commit -m "📊 每日信号 $(date +'%Y-%m-%d')"
+          git push
