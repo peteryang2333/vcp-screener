@@ -1,33 +1,33 @@
 #!/bin/bash
 # VCP Screener 多市场每日运行脚本
-# 支持: US(美股) JP(日本) KR(韩国)
-# 用法: bash run_vcp_screener.sh [market]
-#       market: us / jp / kr / all（默认all）
+# 兼容 Mac 本地与 GitHub Actions 云端
+set -e # 遇到错误立即退出
 
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy NO_PROXY no_proxy
 
 MARKET="${1:-all}"
-POOL="${2:-sp900}"  # 默认 SP900，可指定 active
-FAST="${3:-}"       # 第三参数: -f / --fast 快速模式（跳过 Trend Template）
-VCP_DIR="$HOME/Claude/VCP"
+POOL="${2:-sp900}"  
+FAST="${3:-}"       
+
+# 🔧 修复核心 1：使用动态相对路径，彻底告别 $HOME 报错
+# 获取当前脚本所在的绝对路径作为根目录
+VCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULT_DIR="$VCP_DIR/数据"
 TRACKER="$VCP_DIR/vcp_tracker.py"
 mkdir -p "$RESULT_DIR"
 
+# 🔧 修复核心 2：静默安装依赖，防止云端环境缺少包
+pip3 install requests pandas lxml scipy -q 2>/dev/null || true
+
 # 如果 SP 900 模式且本地没有 CSV，自动从 Wikipedia 下载并缓存
 if [ "$POOL" = "sp900" ]; then
   if [ ! -f "$VCP_DIR/sp500.csv" ] || [ ! -f "$VCP_DIR/sp400.csv" ]; then
-    echo "📥 下载 SP 500 / SP 400 成分股列表..."
+    echo "📥 发现缺少股票池文件，正在从 Wikipedia 下载 SP 500 / SP 400 成分股列表..."
 
-    # 安装依赖（一次性）
-    pip3 install lxml -q 2>/dev/null || true
-
-    # 从 Wikipedia 抓取并保存为本地 CSV
-    # 🔧 修复: pd.read_html 直接请求 Wikipedia 被 403 封禁，改为 requests + StringIO
     /usr/bin/python3 -c "
 import requests as req, pandas as pd, os
 from io import StringIO
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
 def save_wiki(url, fpath, col='Symbol'):
     try:
@@ -56,11 +56,8 @@ save_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', dir + '/s
     if [ -f "$VCP_DIR/sp500.csv" ] && [ -s "$VCP_DIR/sp500.csv" ]; then
       echo "  ✅ sp500.csv: $(wc -l < "$VCP_DIR/sp500.csv") 只"
     fi
-    if [ -f "$VCP_DIR/sp400.csv" ] && [ -s "$VCP_DIR/sp400.csv" ]; then
-      echo "  ✅ sp400.csv: $(wc -l < "$VCP_DIR/sp400.csv") 只"
-    else
-      echo "  ⚠️ sp400.csv 获取失败，仅用 S&P 500"
-    fi
+  else
+      echo "  ✅ 已检测到本地 sp500/sp400.csv 缓存，跳过抓取。"
   fi
 fi
 
@@ -91,7 +88,12 @@ if [ "$MARKET" = "all" ]; then
     /usr/bin/python3 "$VCP_DIR/vcp_screener.py" --market "$m" --pool "$POOL" $FAST 2>&1 | tee -a "$OUTFILE"
     echo "" >> "$OUTFILE"
     echo "--- 运行时间: $(date '+%Y-%m-%d %H:%M:%S %Z') ---" >> "$OUTFILE"
-    ln -sf "$OUTFILE" "$RESULT_DIR/最新_${label}.txt"
+    
+    # 🔧 修复核心 3：生成 Markdown 分析报告，取代软链接
+    if [ "$m" = "us" ]; then
+        cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
+        echo "  📝 已生成美股最新分析报告.md"
+    fi
 
     # 记录到跟踪表
     /usr/bin/python3 "$TRACKER" --scan-all 2>/dev/null
@@ -100,14 +102,16 @@ if [ "$MARKET" = "all" ]; then
   echo ""
   echo "=========================================="
   echo "  ✅ 全部市场扫描完成"
-  ls -lh "$RESULT_DIR"/vcp_*_$(date +%Y%m%d).txt 2>/dev/null
   echo "=========================================="
 else
   OUTFILE="$RESULT_DIR/vcp_${TAG}_$(date +%Y%m%d).txt"
   /usr/bin/python3 "$VCP_DIR/vcp_screener.py" --market "$MARKET" --pool "$POOL" $FAST 2>&1 | tee "$OUTFILE"
   echo "" >> "$OUTFILE"
   echo "--- 运行时间: $(date '+%Y-%m-%d %H:%M:%S %Z') ---" >> "$OUTFILE"
-  ln -sf "$OUTFILE" "$RESULT_DIR/最新_${TAG}.txt"
+  
+  if [ "$MARKET" = "us" ]; then
+      cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
+  fi
 
   # 记录到跟踪表
   /usr/bin/python3 "$TRACKER" --scan-all 2>/dev/null
