@@ -5,6 +5,10 @@ on:
     - cron: '45 19 * * 1-5'
   workflow_dispatch:
 
+# 🚀 补上权限，允许机器人上传 result.txt
+permissions:
+  contents: write
+
 jobs:
   run-strategy:
     runs-on: ubuntu-latest
@@ -33,8 +37,10 @@ jobs:
           mkdir -p results
           cp result.txt "results/$(date +'%Y-%m-%d').txt"
           cp result.txt results/最新.txt
+          
           git config user.name "Signal Bot"
           git config user.email "signal-bot@github.com"
+          git pull --rebase origin main || true
           git add results/
           git diff --staged --quiet || git commit -m "📊 每日信号 $(date +'%Y-%m-%d')"
-          git push
+          git push origin main
