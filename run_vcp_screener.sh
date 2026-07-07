@@ -1,7 +1,9 @@
 #!/bin/bash
 # VCP Screener 多市场每日运行脚本
 # 兼容 Mac 本地与 GitHub Actions 云端
-set -e # 遇到错误立即退出
+
+# 遇到错误立即退出，绝不向 Git 推送残缺数据
+set -e 
 
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy NO_PROXY no_proxy
 
@@ -9,15 +11,14 @@ MARKET="${1:-all}"
 POOL="${2:-sp900}"  
 FAST="${3:-}"       
 
-# 🔧 修复核心 1：使用动态相对路径，彻底告别 $HOME 报错
-# 获取当前脚本所在的绝对路径作为根目录
+# ====== 🚀 修复核心 1：使用动态相对路径 ======
 VCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULT_DIR="$VCP_DIR/数据"
 TRACKER="$VCP_DIR/vcp_tracker.py"
 mkdir -p "$RESULT_DIR"
 
-# 🔧 修复核心 2：静默安装依赖，防止云端环境缺少包
-pip3 install requests pandas lxml scipy -q 2>/dev/null || true
+# 🚀 修复核心 2：确保环境依赖完整
+pip3 install requests pandas lxml scipy yfinance -q 2>/dev/null || true
 
 # 如果 SP 900 模式且本地没有 CSV，自动从 Wikipedia 下载并缓存
 if [ "$POOL" = "sp900" ]; then
@@ -89,10 +90,10 @@ if [ "$MARKET" = "all" ]; then
     echo "" >> "$OUTFILE"
     echo "--- 运行时间: $(date '+%Y-%m-%d %H:%M:%S %Z') ---" >> "$OUTFILE"
     
-    # 🔧 修复核心 3：生成 Markdown 分析报告，取代软链接
+    # 🚀 修复核心 3：硬拷贝生成 Markdown 报告
     if [ "$m" = "us" ]; then
         cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
-        echo "  📝 已生成美股最新分析报告.md"
+        echo "  📝 已生成美股 最新分析报告.md"
     fi
 
     # 记录到跟踪表
