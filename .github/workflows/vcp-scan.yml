@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.CUSTOM_TOKEN }}
 
       - uses: actions/setup-python@v4
         with:
@@ -33,7 +33,7 @@ jobs:
           mkdir -p results
           cp result.txt "results/$(date +'%Y-%m-%d').txt"
           cp result.txt results/最新.txt
-          git config user.name "Signal Bot"
+          git config user.name "peteryang2333"
           git config user.email "signal-bot@github.com"
           git add results/
           git diff --staged --quiet || git commit -m "📊 每日信号 $(date +'%Y-%m-%d')"
