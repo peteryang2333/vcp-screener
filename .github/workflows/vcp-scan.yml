@@ -25,7 +25,7 @@ jobs:
           python-version: '3.10'
 
       - name: 安装依赖
-        run: pip install yfinance pandas lxml requests
+        run: pip install yfinance pandas numpy scipy lxml requests
 
       - name: 确定扫描市场
         id: market
@@ -63,4 +63,4 @@ jobs:
           git pull --rebase origin main || true
           git add 数据/ sp500.csv sp400.csv
           git diff --staged --quiet || git commit -m "📊 VCP 扫描结果 $(date +'%Y-%m-%d')"
-          git push --force --force
+          git push

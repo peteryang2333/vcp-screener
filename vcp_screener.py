@@ -66,42 +66,38 @@ MARKETS = {
 
 
 def check_network():
-    """检查网络连通性"""
-    sites = [
-        ("Google",  "https://www.google.com"),
-        ("YouTube", "https://www.youtube.com"),
-        ("Yahoo",   "https://finance.yahoo.com"),
-        ("GitHub",  "https://github.com"),
-    ]
+    """检查到 Yahoo 数据接口的连通性（只测真正需要的数据源，避免被无关站点误杀）
+
+    说明：原逻辑要求 Google / YouTube / Yahoo 主页全通才算“网络正常”，但 Google、
+    YouTube 在国内等网络环境本就不可达，且 finance.yahoo.com 主页常返回 403，这会
+    导致脚本在任何受限网络下直接 sys.exit(1)，走不到真正的数据抓取。这里只测 Yahoo
+    行情数据接口；只要能拿到 HTTP 响应（含 401/403/429）即说明链路是通的——403/429
+    只是服务端限流，并非断网。
+    """
     sess = req.Session()
     sess.trust_env = False
     sess.proxies = None
     sess.headers.update({"User-Agent": "Mozilla/5.0"})
 
-    print("  [网络检测] 测试以下站点...")
-    all_ok = True
-    for name, url in sites:
-        try:
-            r = sess.get(url, timeout=5)
-            status = "OK" if r.status_code < 400 else "HTTP %d" % r.status_code
-            print("    %-10s [%s]" % (name, status))
-        except Exception as e:
-            reason = str(e)
-            if "resolve" in reason.lower() or "dns" in reason.lower():
-                reason = "DNS 解析失败"
-            elif "timeout" in reason.lower():
-                reason = "连接超时"
-            elif "proxy" in reason.lower() or "tunnel" in reason.lower():
-                reason = "代理拦截"
-            else:
-                reason = reason.split(".")[0][:40]
-            print("    %-10s ❌ %s" % (name, reason))
-            all_ok = False
-    if not all_ok:
-        print("\n  ⚠️  部分站点无法访问，请检查 VPN/代理/网络后重试。")
+    test_url = "https://query1.finance.yahoo.com/v8/finance/chart/AAPL"
+    try:
+        r = sess.get(test_url, timeout=10)
+        print("  [网络检测] Yahoo 数据接口: 可达 (HTTP %d)" % r.status_code)
+        print("  ✅ 网络正常\n")
+        return True
+    except Exception as e:
+        reason = str(e)
+        if "resolve" in reason.lower() or "dns" in reason.lower():
+            reason = "DNS 解析失败"
+        elif "timeout" in reason.lower():
+            reason = "连接超时"
+        elif "proxy" in reason.lower() or "tunnel" in reason.lower():
+            reason = "代理拦截"
+        else:
+            reason = reason.split(".")[0][:40]
+        print("  [网络检测] Yahoo 数据接口: ❌ %s" % reason)
+        print("\n  ⚠️  无法连接 Yahoo 数据接口，请检查网络/VPN 后重试。")
         return False
-    print("  ✅ 网络正常\n")
-    return True
 
 
 def get_sp900_tickers():
@@ -175,14 +171,64 @@ def get_most_active(market_cfg, limit=100):
 
 
 def get_spy_performance():
-    """获取 SPY 最近 6 月涨幅"""
+    """获取 SPY 最近 6 月涨幅（兼容 yfinance 1.x 的 MultiIndex 列）"""
     try:
         spy = yf.download("SPY", period="6mo", auto_adjust=True, progress=False)
-        if spy.empty or len(spy) < 20:
+        if spy is None or spy.empty or len(spy) < 20:
             return 0.0
-        return (float(spy['Close'].iloc[-1]) / float(spy['Close'].iloc[0]) - 1) * 100
+        close = spy.xs("Close", level=0, axis=1) if isinstance(spy.columns, pd.MultiIndex) else spy["Close"]
+        return (float(close.iloc[-1]) / float(close.iloc[0]) - 1) * 100
     except Exception:
         return 0.0
+
+
+def safe_download(tickers, period="1y", attempts=4):
+    """带限流重试的 yfinance 下载封装（兼容 yfinance 1.x）
+
+    yfinance 1.x 移除了 group_by 参数，多标的下载返回 (ticker, field) 二级列。
+    同时 Yahoo 对匿名请求会返回 429 限流，这里做指数退避重试。
+    """
+    last_err = None
+    for attempt in range(attempts):
+        try:
+            df = yf.download(tickers, period=period, auto_adjust=True, progress=False)
+            if df is None:
+                return None
+            return df
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            if "Rate" in msg or "429" in msg or "Too Many" in msg:
+                wait = int(REQUEST_DELAY * (2 ** attempt))
+                print("    ⏳ 触发 Yahoo 限流，%d 秒后重试 (%d/%d)..." %
+                      (wait, attempt + 1, attempts))
+                time.sleep(wait)
+            else:
+                # 非限流错误直接抛出，便于排查
+                raise
+    print("    ⚠️  下载失败（限流）: %s" % str(last_err)[:80])
+    return None
+
+
+def extract_ticker_df(raw, ticker):
+    """从 yfinance 1.x 的 MultiIndex 结果中安全取出单只股票的数据框"""
+    if raw is None or (hasattr(raw, "empty") and raw.empty):
+        return None
+    if isinstance(raw.columns, pd.MultiIndex):
+        try:
+            df = raw[ticker]
+        except KeyError:
+            try:
+                df = raw.xs(ticker, level=0, axis=1)
+            except Exception:
+                return None
+    else:
+        df = raw
+    if df is None or (hasattr(df, "empty") and df.empty):
+        return None
+    if isinstance(df, pd.Series):
+        df = df.to_frame().T
+    return df
 
 
 def calc_rs_rating(ticker_returns_pct, spy_returns_pct, all_returns=None):
@@ -290,22 +336,15 @@ def scan_vcp(tickers, market_tag=""):
         batch = tickers[i:i + BATCH_SIZE]
         print("  📥 %s 第 %d 批 (%d 只)..." % (market_tag, i//BATCH_SIZE + 1, len(batch)))
 
-        try:
-            raw = yf.download(" ".join(batch), period="1y",
-                              group_by='ticker', auto_adjust=True,
-                              progress=False)
-        except Exception as e:
-            print("    ⚠️  批次下载失败: %s" % str(e)[:60])
+        raw = safe_download(batch, period="1y")
+        if raw is None:
             time.sleep(REQUEST_DELAY)
             continue
 
         for ticker in batch:
             try:
-                if len(batch) == 1:
-                    df = raw
-                elif isinstance(raw.columns, pd.MultiIndex):
-                    df = raw[ticker]
-                else:
+                df = extract_ticker_df(raw, ticker)
+                if df is None:
                     continue
 
                 df = df.dropna()
