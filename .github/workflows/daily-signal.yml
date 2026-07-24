@@ -5,6 +5,9 @@ on:
     - cron: '45 19 * * 1-5'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   run-strategy:
     runs-on: ubuntu-latest
@@ -18,7 +21,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install yfinance pandas numpy
+        run: pip install yfinance pandas numpy scipy lxml requests
 
       - name: Run Strategy Script
         env:
@@ -26,7 +29,7 @@ jobs:
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        run: python daily_signal.py
+        run: python3 daily_signal.py
 
       - name: Commit results
         run: |
