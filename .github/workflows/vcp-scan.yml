@@ -5,13 +5,16 @@ on:
     - cron: '45 19 * * 1-5'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   run-strategy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.CUSTOM_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v4
         with:
@@ -28,7 +31,7 @@ jobs:
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        run: python daily_signal.py
+        run: python3 daily_signal.py
 
       - name: Commit results
         run: |
