@@ -12,6 +12,9 @@ on:
         required: true
         default: 'all'
 
+permissions:
+  contents: write
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -60,7 +63,7 @@ jobs:
         run: |
           git config user.name "VCP Bot"
           git config user.email "vcp-bot@github.com"
-          git pull --rebase origin main || true
-          git add 数据/ sp500.csv sp400.csv
+          git pull --rebase origin ${GITHUB_REF_NAME} || true
+          git add 数据 sp500.csv sp400.csv 2>/dev/null || true
           git diff --staged --quiet || git commit -m "📊 VCP 扫描结果 $(date +'%Y-%m-%d')"
           git push
