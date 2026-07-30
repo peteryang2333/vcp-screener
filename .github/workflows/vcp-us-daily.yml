@@ -1,0 +1,68 @@
+name: VCP US Daily Scan
+
+on:
+  schedule:
+    - cron: '30 21 * * 1-5'   # 美东收盘后（21:30 UTC ≈ 美东 17:30）工作日
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 下载 S&P 500 / 400 成分股列表
+        run: |
+          python3 - <<'PY'
+          import requests, os
+          from io import StringIO
+          import pandas as pd
+          HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+          def save(url, fpath, col='Symbol'):
+              try:
+                  r = requests.get(url, headers=HEADERS, timeout=30)
+                  r.raise_for_status()
+                  for t in pd.read_html(StringIO(r.text)):
+                      if col in t.columns:
+                          syms = t[col].dropna().astype(str).str.replace('.', '-').str.strip().tolist()
+                          syms = [s for s in syms if s and not s.startswith('^') and 'S&P' not in s]
+                          with open(fpath, 'w') as f:
+                              f.write('\n'.join(syms) + '\n')
+                          print('saved', len(syms), 'to', os.path.basename(fpath))
+                          return
+                  print('warn: no', col, 'column in', url)
+              except Exception as e:
+                  print('fail', url, e)
+          save('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', 'sp500.csv')
+          save('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 'sp400.csv')
+          PY
+
+      - name: 运行 VCP 扫描器（美股）
+        run: |
+          mkdir -p 数据
+          python3 vcp_screener.py --market us --pool sp900 > "数据/vcp_US_$(date +%Y%m%d).txt" 2>&1
+          cp "数据/vcp_US_$(date +%Y%m%d).txt" "数据/最新_US.txt"
+          echo "--- 生成文件 ---"
+          ls -l 数据/
+
+      - name: 提交结果
+        run: |
+          git config user.name "peteryang2333"
+          git config user.email "signal-bot@github.com"
+          git add 数据/ sp500.csv sp400.csv
+          git diff --staged --quiet || git commit -m "📊 VCP US 每日扫描 $(date +'%Y-%m-%d')"
+          git push
