@@ -55,6 +55,7 @@ jobs:
         run: |
           mkdir -p 数据
           python3 vcp_screener.py --market us --pool sp900 > "数据/vcp_US_$(date +%Y%m%d).txt" 2>&1
+          rm -f "数据/最新_US.txt"   # 清掉仓库遗留的悬空符号链接，避免 cp 失败
           cp "数据/vcp_US_$(date +%Y%m%d).txt" "数据/最新_US.txt"
           echo "--- 生成文件 ---"
           ls -l 数据/
