@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# 价缓存：移出 git，改存 GitHub Artifact（见 vcp-us-daily.yml），避免仓库膨胀
+数据/vcp_cache.pkl
+*.pkl

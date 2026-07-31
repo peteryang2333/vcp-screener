@@ -12,7 +12,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码（含已提交的价缓存）
+      - name: 检出代码
         uses: actions/checkout@v4
 
       - name: 设置 Python
@@ -24,6 +24,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: 还原价缓存（GitHub Artifact，不入 git 以免撑大仓库）
+        # 首次运行无 artifact 会失败（continue-on-error），下方刷新步骤会从零重建
+        uses: actions/download-artifact@v4
+        with:
+          name: vcp-cache
+          path: 数据
+        continue-on-error: true
 
       - name: 下载 S&P 500 / 400 成分股列表
         run: |
@@ -51,34 +59,41 @@ jobs:
           save('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 'sp400.csv')
           PY
 
-      - name: 刷新/预置本地价缓存（离线扫描用，绕开 Yahoo 限流）
-        # build_vcp_cache.py 默认增量：仅补抓缺失标的；缓存 >7 天或 --force 才全量刷新。
-        # 失败（如 Yahoo 全挂）时保留旧缓存，不阻断扫描。
+      - name: 刷新价缓存（每日全量 --force，保证收盘价最新；失败沿用旧缓存）
+        # --force 对全宇宙(934只)重新拉取，彻底拿到最新收盘价；几乎全失败则保留旧缓存不覆盖。
+        # 价缓存写入 数据/vcp_cache.pkl，之后通过 Artifact 持久化，不进 git。
         run: |
-          python3 build_vcp_cache.py || echo "⚠️ 缓存刷新失败，沿用已提交缓存继续扫描"
+          python3 build_vcp_cache.py --force || echo "⚠️ 缓存刷新失败，沿用已还原缓存继续扫描"
 
-      - name: 运行 VCP 扫描器（美股 SP900，离线缓存模式）
+      - name: 运行 VCP 扫描器（美股 SP900，离线缓存模式，留存归档）
         run: |
           mkdir -p 数据
           python3 vcp_screener.py --market us --pool sp900 > "数据/vcp_US_$(date +%Y%m%d).txt" 2>&1
-          rm -f "数据/最新_US.txt"   # 清掉仓库遗留的悬空符号链接，避免 cp 失败
-          cp "数据/vcp_US_$(date +%Y%m%d).txt" "数据/最新_US.txt"
-          echo "--- SP900 扫描生成文件 ---"
-          ls -l 数据/
 
-      - name: 运行 VCP 扫描器（美股 ADR，离线缓存模式）
+      - name: 运行 VCP 扫描器（美股 ADR，离线缓存模式，留存归档）
         run: |
           mkdir -p 数据
           python3 vcp_screener.py --market us --pool adr > "数据/vcp_ADR_$(date +%Y%m%d).txt" 2>&1
-          rm -f "数据/最新_ADR.txt"
-          cp "数据/vcp_ADR_$(date +%Y%m%d).txt" "数据/最新_ADR.txt"
-          echo "--- ADR 扫描生成文件 ---"
-          ls -l 数据/
 
-      - name: 提交结果
+      - name: 生成早报信号文件（数据/最新_US.txt 与 results/最新.txt，格式正确且每日更新）
+        run: |
+          python3 gen_latest_us.py
+          python3 gen_results_latest.py
+          echo "--- 生成的报告信号文件 ---"
+          ls -l 数据/最新_US.txt results/最新.txt
+
+      - name: 保存价缓存到 Artifact（供次日复用，不入 git）
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcp-cache
+          path: 数据/vcp_cache.pkl
+          retention-days: 30
+        continue-on-error: true
+
+      - name: 提交结果（仅信号/成分股文件，价缓存已移至 Artifact）
         run: |
           git config user.name "peteryang2333"
           git config user.email "signal-bot@github.com"
-          git add 数据/ sp500.csv sp400.csv adr_list.txt
+          git add 数据/ results/最新.txt sp500.csv sp400.csv
           git diff --staged --quiet || git commit -m "📊 VCP US 每日扫描 $(date +'%Y-%m-%d')"
           git push
