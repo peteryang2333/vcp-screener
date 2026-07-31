@@ -17,6 +17,7 @@ import warnings
 import sys
 import time
 import random
+import pickle
 import argparse
 from datetime import datetime
 import requests as req
@@ -176,7 +177,15 @@ def get_most_active(market_cfg, limit=100):
 
 
 def get_spy_performance():
-    """获取 SPY 最近 6 月涨幅（兼容 yfinance 1.x 的 MultiIndex 列）"""
+    """获取 SPY 最近 6 月涨幅（兼容 yfinance 1.x 的 MultiIndex 列）
+
+    若本地价缓存存在且含 SPY，直接离线取数，彻底绕开 Yahoo 匿名限流。
+    """
+    if os.path.exists(CACHE_PATH):
+        spy = load_cached_prices("SPY")
+        if spy is not None and len(spy) >= 20:
+            close = spy["Close"].squeeze()
+            return (float(close.iloc[-1]) / float(close.iloc[0]) - 1) * 100
     try:
         spy = yf.download("SPY", period="6mo", auto_adjust=True, progress=False)
         if spy is None or spy.empty or len(spy) < 20:
@@ -217,6 +226,23 @@ def safe_download(tickers, period="1y", attempts=5):
                 # 非限流错误直接抛出，便于排查
                 raise
     print("    ⚠️  下载失败（限流）: %s" % str(last_err)[:80])
+    return None
+
+
+CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "数据/vcp_cache.pkl")
+
+
+def load_cached_prices(ticker):
+    """优先从本地价缓存取单只 DataFrame，避免依赖 Yahoo 实时拉取"""
+    if not os.path.exists(CACHE_PATH):
+        return None
+    try:
+        with open(CACHE_PATH, 'rb') as f:
+            cache = pickle.load(f)
+        if ticker in cache:
+            return cache[ticker]
+    except Exception:
+        pass
     return None
 
 
@@ -352,18 +378,24 @@ def scan_vcp(tickers, market_tag=""):
 
     candidates = []
     parsed_ok = 0          # 成功解析出行情的标的数
+    use_cache = os.path.exists(CACHE_PATH)
+    if use_cache:
+        print("  💾 检测到本地价缓存，直接离线取数（绕开 Yahoo 匿名限流）")
     for i in range(0, len(tickers), BATCH_SIZE):
         batch = tickers[i:i + BATCH_SIZE]
-        print("  📥 %s 第 %d 批 (%d 只)..." % (market_tag, i//BATCH_SIZE + 1, len(batch)))
 
-        raw = safe_download(batch, period="1y")
-        if raw is None:
-            time.sleep(REQUEST_DELAY)
-            continue
+        if use_cache:
+            raw = None
+        else:
+            print("  📥 %s 第 %d 批 (%d 只)..." % (market_tag, i//BATCH_SIZE + 1, len(batch)))
+            raw = safe_download(batch, period="1y")
+            if raw is None:
+                time.sleep(REQUEST_DELAY)
+                continue
 
         for ticker in batch:
             try:
-                df = extract_ticker_df(raw, ticker)
+                df = load_cached_prices(ticker) if use_cache else extract_ticker_df(raw, ticker)
                 if df is None:
                     continue
 
