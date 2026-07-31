@@ -9,12 +9,14 @@
 #   - 全量刷新成功后写入；若几乎全失败（如 Yahoo 全挂），保留旧缓存，不覆盖。
 #   - 路径相对脚本所在目录，可在 CI (ubuntu) 与本机通用。
 import requests, time, os, sys, pickle
+from datetime import datetime, date
 import pandas as pd
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULT_DIR = os.path.join(SCRIPT_DIR, "数据")
 CACHE_PATH = os.path.join(RESULT_DIR, "vcp_cache.pkl")
+FRESH_FILE = os.path.join(RESULT_DIR, "cache_refresh.txt")  # 记录上次全量刷新日期
 FRESH_DAYS = 7  # 超过该天数触发全量刷新
 
 
@@ -59,24 +61,29 @@ cache = load_cache()
 universe = build_universe()
 print("宇宙总数:", len(universe), "| 缓存已有:", len(cache))
 
-stale = False
-if os.path.exists(CACHE_PATH):
-    age = (time.time() - os.path.getmtime(CACHE_PATH)) / 86400.0
-    if age > FRESH_DAYS:
-        stale = True
-        print("缓存已 %.1f 天 (>%d) -> 全量刷新" % (age, FRESH_DAYS))
-else:
-    stale = True
-    print("缓存不存在 -> 全量刷新")
 
-if force or stale:
+def days_since_refresh():
+    """读取上次全量刷新日期（提交进 git，避免 CI checkout 重置 mtime 误判新鲜度）"""
+    if not os.path.exists(FRESH_FILE):
+        return None
+    try:
+        d = datetime.strptime(open(FRESH_FILE).read().strip(), "%Y-%m-%d").date()
+        return (date.today() - d).days
+    except Exception:
+        return None
+
+
+since = days_since_refresh()
+need_full = force or (not os.path.exists(CACHE_PATH)) or (since is None) or (since > FRESH_DAYS)
+if need_full:
     targets = universe
+    print("全量刷新（force=%s, pkl缺失=%s, 距上次全量=%s天）" % (force, not os.path.exists(CACHE_PATH), since))
 else:
     targets = [t for t in universe if t not in cache]
     if targets:
         print("增量模式：仅抓取缺失的 %d 只" % len(targets))
     else:
-        print("缓存完整且新鲜（<=%d 天），无需更新。退出。" % FRESH_DAYS)
+        print("缓存完整且新鲜（上次全量 %s 天前），无需更新。退出。" % since)
         sys.exit(0)
 
 sess = requests.Session()
@@ -128,11 +135,15 @@ if ok == 0:
     print("⚠️ 本次未抓到任何数据，保留旧缓存，放弃写入")
     sys.exit(1)
 # 全量刷新时若成功率过低（如 Yahoo 全挂），保留旧缓存，不覆盖
-if (force or stale) and ok < max(10, int(0.3 * len(targets))):
+if need_full and ok < max(10, int(0.3 * len(targets))):
     print("⚠️ 全量刷新成功率过低，保留旧缓存，放弃本次写入")
     sys.exit(1)
 
 os.makedirs(RESULT_DIR, exist_ok=True)
 with open(CACHE_PATH, "wb") as f:
     pickle.dump(cache, f)
-print("已保存缓存 ->", CACHE_PATH, "| 总标的:", len(cache))
+if need_full:
+    with open(FRESH_FILE, "w") as f:
+        f.write(date.today().strftime("%Y-%m-%d"))
+print("已保存缓存 ->", CACHE_PATH, "| 总标的:", len(cache),
+      (" | 已记录全量刷新日期 %s" % date.today()) if need_full else "")
