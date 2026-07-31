@@ -1,0 +1,36 @@
+# VCP 扫描用 ADR 清单（每行一个代码，# 开头为注释）
+# 中概 / 外企 ADR —— 纳入本地价缓存，使 workflow 离线扫描也能覆盖
+BABA
+JD
+PDD
+BIDU
+NIO
+XPEV
+LI
+TSM
+INFY
+TCEHY
+BILI
+MNSO
+FUTU
+TIGR
+YMM
+ONC
+ZTO
+EDU
+TAL
+IQ
+HUYA
+MOMO
+WB
+VIPS
+GDS
+TCOM
+YUMC
+TME
+BEKE
+RERE
+SOHU
+JKS
+YJ
+CNTY

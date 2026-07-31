@@ -12,7 +12,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
+      - name: 检出代码（含已提交的价缓存）
         uses: actions/checkout@v4
 
       - name: 设置 Python
@@ -51,19 +51,34 @@ jobs:
           save('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 'sp400.csv')
           PY
 
-      - name: 运行 VCP 扫描器（美股）
+      - name: 刷新/预置本地价缓存（离线扫描用，绕开 Yahoo 限流）
+        # build_vcp_cache.py 默认增量：仅补抓缺失标的；缓存 >7 天或 --force 才全量刷新。
+        # 失败（如 Yahoo 全挂）时保留旧缓存，不阻断扫描。
+        run: |
+          python3 build_vcp_cache.py || echo "⚠️ 缓存刷新失败，沿用已提交缓存继续扫描"
+
+      - name: 运行 VCP 扫描器（美股 SP900，离线缓存模式）
         run: |
           mkdir -p 数据
           python3 vcp_screener.py --market us --pool sp900 > "数据/vcp_US_$(date +%Y%m%d).txt" 2>&1
           rm -f "数据/最新_US.txt"   # 清掉仓库遗留的悬空符号链接，避免 cp 失败
           cp "数据/vcp_US_$(date +%Y%m%d).txt" "数据/最新_US.txt"
-          echo "--- 生成文件 ---"
+          echo "--- SP900 扫描生成文件 ---"
+          ls -l 数据/
+
+      - name: 运行 VCP 扫描器（美股 ADR，离线缓存模式）
+        run: |
+          mkdir -p 数据
+          python3 vcp_screener.py --market us --pool adr > "数据/vcp_ADR_$(date +%Y%m%d).txt" 2>&1
+          rm -f "数据/最新_ADR.txt"
+          cp "数据/vcp_ADR_$(date +%Y%m%d).txt" "数据/最新_ADR.txt"
+          echo "--- ADR 扫描生成文件 ---"
           ls -l 数据/
 
       - name: 提交结果
         run: |
           git config user.name "peteryang2333"
           git config user.email "signal-bot@github.com"
-          git add 数据/ sp500.csv sp400.csv
+          git add 数据/ sp500.csv sp400.csv adr_list.txt
           git diff --staged --quiet || git commit -m "📊 VCP US 每日扫描 $(date +'%Y-%m-%d')"
           git push

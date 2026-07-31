@@ -134,6 +134,23 @@ def get_sp900_tickers():
     return all_tickers
 
 
+def get_adr_tickers():
+    """读取本地 ADR 清单（每行一个代码，# 开头为注释），用于扫描中概/外企 ADR"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    fpath = os.path.join(script_dir, "数据", "adr_list.txt")
+    if not os.path.exists(fpath):
+        print("  ⚠️  未找到 数据/adr_list.txt，跳过 ADR 池")
+        return []
+    tickers = []
+    with open(fpath) as f:
+        for line in f:
+            s = line.strip().upper()
+            if s and not s.startswith("#"):
+                tickers.append(s)
+    print("  ✅ ADR 共 %d 只" % len(tickers))
+    return tickers
+
+
 def get_most_active(market_cfg, limit=100):
     """yfinance screener — 获取指定市场最活跃股票"""
     region = market_cfg['region']
@@ -521,6 +538,8 @@ def get_us_tickers(pool, cfg):
             print("  ⚠️ SP 900 获取失败，自动降级到最活跃 100...")
             return get_most_active(cfg, 100)
         return tickers
+    elif pool == 'adr':
+        return get_adr_tickers()
     else:
         return get_most_active(cfg, 100)
 
@@ -531,8 +550,8 @@ def main():
                         choices=['us', 'jp', 'kr', 'all'],
                         help='市场: us(美股), jp(日本), kr(韩国), all(全部)')
     parser.add_argument('--pool', '-p', default='sp900',
-                        choices=['active', 'sp900'],
-                        help='美股池: active(最活跃100), sp900(标普500+400, 默认)')
+                        choices=['active', 'sp900', 'adr'],
+                        help='美股池: active(最活跃100), sp900(标普500+400, 默认), adr(中概/外企ADR)')
     parser.add_argument('--fast', '-f', action='store_true',
                         help='快速模式：跳过 Trend Template 过滤')
     args = parser.parse_args()
@@ -546,9 +565,12 @@ def main():
         print("  ⚠️  未安装 scipy，多段评分不可用。运行: pip3 install scipy")
     print("=" * 70)
 
-    if not check_network():
-        print("\n请先修复网络，然后再试。")
-        sys.exit(1)
+    if not os.path.exists(CACHE_PATH):
+        if not check_network():
+            print("\n请先修复网络，然后再试。")
+            sys.exit(1)
+    else:
+        print("  🗄️  检测到本地价缓存，跳过联网检测，直接离线扫描。")
 
     if args.fast:
         global MIN_DATA_DAYS
