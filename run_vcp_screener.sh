@@ -62,6 +62,11 @@ save_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', dir + '/s
   fi
 fi
 
+# 🚀 修复核心 4：扫描前自动刷新本地价缓存（增量；超过 FRESH_DAYS 自动全量）
+# 避免缓存冻结导致持续 0 命中（2026-08 曾因此停更）
+echo "🔄 刷新本地价缓存 (build_vcp_cache.py) ..."
+/usr/bin/python3 "$VCP_DIR/build_vcp_cache.py" >/dev/null 2>&1 && echo "  ✅ 缓存已刷新" || echo "  ⚠️ 缓存刷新失败，沿用旧缓存继续扫描"
+
 # 映射市场到文件标签
 case "$MARKET" in
   us) TAG="US" ;;
@@ -94,6 +99,8 @@ if [ "$MARKET" = "all" ]; then
     if [ "$m" = "us" ]; then
         cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
         echo "  📝 已生成美股 最新分析报告.md"
+        /usr/bin/python3 "$VCP_DIR/gen_latest_us.py" 2>&1 | tail -2
+        echo "  📝 已刷新 最新_US.txt（每日提醒读取用）"
     fi
 
     # 记录到跟踪表
@@ -112,6 +119,8 @@ else
   
   if [ "$MARKET" = "us" ]; then
       cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
+      /usr/bin/python3 "$VCP_DIR/gen_latest_us.py" 2>&1 | tail -2
+      echo "  📝 已刷新 最新_US.txt（每日提醒读取用）"
   fi
 
   # 记录到跟踪表
