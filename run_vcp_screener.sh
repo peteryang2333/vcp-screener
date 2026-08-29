@@ -97,10 +97,10 @@ if [ "$MARKET" = "all" ]; then
     
     # 🚀 修复核心 3：硬拷贝生成 Markdown 报告
     if [ "$m" = "us" ]; then
-        cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
         echo "  📝 已生成美股 最新分析报告.md"
         /usr/bin/python3 "$VCP_DIR/gen_latest_us.py" 2>&1 | tail -2
         echo "  📝 已刷新 最新_US.txt（每日提醒读取用）"
+        cp "$OUTFILE" "$VCP_DIR/最新分析报告.md" 2>/dev/null || echo "  ⚠️ 分析报告副本写入跳过（不影响信号）"
     fi
 
     # 记录到跟踪表
@@ -118,9 +118,9 @@ else
   echo "--- 运行时间: $(date '+%Y-%m-%d %H:%M:%S %Z') ---" >> "$OUTFILE"
   
   if [ "$MARKET" = "us" ]; then
-      cp "$OUTFILE" "$VCP_DIR/最新分析报告.md"
       /usr/bin/python3 "$VCP_DIR/gen_latest_us.py" 2>&1 | tail -2
       echo "  📝 已刷新 最新_US.txt（每日提醒读取用）"
+      cp "$OUTFILE" "$VCP_DIR/最新分析报告.md" 2>/dev/null || echo "  ⚠️ 分析报告副本写入跳过（不影响信号）"
   fi
 
   # 记录到跟踪表
