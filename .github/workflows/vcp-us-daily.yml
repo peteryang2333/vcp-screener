@@ -1,8 +1,14 @@
 name: VCP US Daily Scan
 
+# 2026-11-14 修复（P0-2）：
+#   - 21:30 UTC 在 EST 只等于 16:30 ET，日线尚未落定，刷新拿到的是 T-1 甚至 T-2 收盘价。
+#     改到 23:00 UTC（18:00 EST / 19:00 EDT），全年都在官方收盘 + 日线落定之后。
+#   - 缓存刷新失败旧版是 `|| echo 沿用旧缓存`，于是「11-13 扫描」实际用 11-11 价。
+#     现在 build_vcp_cache.py --assert-fresh 在写盘前断言 SPY 末根与覆盖率，失败 exit 2。
+#   - 新增结果回填步骤，把「推荐后表现」写回台账，日报可直接引用 rolling 结论。
 on:
   schedule:
-    - cron: '30 21 * * 1-5'   # 美东收盘后（21:30 UTC ≈ 美东 17:30）工作日
+    - cron: '0 23 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -59,11 +65,24 @@ jobs:
           save('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 'sp400.csv')
           PY
 
-      - name: 刷新价缓存（每日全量 --force，保证收盘价最新；失败沿用旧缓存）
-        # --force 对全宇宙(934只)重新拉取，彻底拿到最新收盘价；几乎全失败则保留旧缓存不覆盖。
-        # 价缓存写入 数据/vcp_cache.pkl，之后通过 Artifact 持久化，不进 git。
+      - name: 刷新价缓存（fail-closed，Yahoo 失败转 stockanalysis，写盘前断言数据日）
         run: |
-          python3 build_vcp_cache.py --force || echo "⚠️ 缓存刷新失败，沿用已还原缓存继续扫描"
+          python3 build_vcp_cache.py --force --assert-fresh
+
+      - name: 断言扫描所用数据日 = 最近完成的美东交易日
+        run: |
+          python3 - <<'PY'
+          import sys, datetime
+          from vcp_data_date import cache_data_date
+          d = cache_data_date()
+          if not d:
+              print("[FATAL] 无法确定价缓存数据日"); sys.exit(2)
+          lag = (datetime.date.today() - datetime.date.fromisoformat(d)).days
+          print("价缓存数据日 %s | 距今 %d 自然日" % (d, lag))
+          if lag > 4:
+              print("[FATAL] 数据日滞后超过 4 天，拒绝用陈旧价生成当日信号"); sys.exit(2)
+          print("OK 新鲜度断言通过")
+          PY
 
       - name: 运行 VCP 扫描器（美股 SP900，离线缓存模式，留存归档）
         run: |
@@ -75,12 +94,19 @@ jobs:
           mkdir -p 数据
           python3 vcp_screener.py --market us --pool adr > "数据/vcp_ADR_$(date +%Y%m%d).txt" 2>&1
 
-      - name: 生成早报信号文件（数据/最新_US.txt 与 results/最新.txt，格式正确且每日更新）
+      - name: 生成早报信号文件（扫描日 = 价缓存数据日，不再是脚本运行日）
         run: |
           python3 gen_latest_us.py
           python3 gen_results_latest.py
-          echo "--- 生成的报告信号文件 ---"
-          ls -l 数据/最新_US.txt results/最新.txt
+          echo "--- 生成的报告信号文件（头部含数据日 / 生成日）---"
+          head -6 数据/最新_US.txt
+          head -8 results/最新.txt
+
+      - name: 结果回填（推荐后 T+5/T+10/T+20 + SPY 超额 + rolling 60 日结论）
+        run: |
+          python3 vcp_outcome_tracker.py
+          echo "--- 回填结论 ---"
+          head -16 数据/vcp_outcomes.md
 
       - name: 保存价缓存到 Artifact（供次日复用，不入 git）
         uses: actions/upload-artifact@v4
@@ -90,7 +116,17 @@ jobs:
           retention-days: 30
         continue-on-error: true
 
-      - name: 提交结果（仅信号/成分股文件，价缓存已移至 Artifact）
+      - name: 保存回填台账到 Artifact（CSV/JSONL 体积大，不进 git）
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcp-outcomes
+          path: |
+            数据/VCP_结果回填.csv
+            数据/vcp_signals.jsonl
+          retention-days: 30
+        continue-on-error: true
+
+      - name: 提交结果（信号文件 / 数据日标记 / 回填摘要）
         run: |
           git config user.name "peteryang2333"
           git config user.email "signal-bot@github.com"
