@@ -5,3 +5,7 @@ __pycache__/
 # 价缓存：移出 git，改存 GitHub Artifact（见 vcp-us-daily.yml），避免仓库膨胀
 数据/vcp_cache.pkl
 *.pkl
+
+# 2026-11-14 结果回填大文件走 Artifact，只把小摘要提交进 git（日报读 raw）
+数据/VCP_结果回填.csv
+数据/vcp_signals.jsonl
