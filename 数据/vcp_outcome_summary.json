@@ -1,0 +1,98 @@
+{
+  "schema": "vcp_outcomes/v1",
+  "generated_at_utc": "2026-11-14T07:15:11.926529+00:00",
+  "cache_last_bar": "2026-11-13",
+  "signal_date_basis": "历史 vcp_US_*.txt 用文件名运行日；2026-11-14 起 最新_US.txt 用价缓存数据日",
+  "total_signals": 4804,
+  "complete": 4073,
+  "pending": 731,
+  "rolling_60d": {
+    "label": "rolling_60d",
+    "n": 547,
+    "avg_r20": -3.73,
+    "avg_excess20": -2.54,
+    "median_excess20": -1.43,
+    "win_rate_pct": 45.5,
+    "breakout_hit_pct": 74.6,
+    "stop_hit_pct": 47.9
+  },
+  "by_score": [
+    {
+      "label": "VCP分=1",
+      "n": 283,
+      "avg_r20": -3.4,
+      "avg_excess20": -2.03,
+      "median_excess20": -0.6,
+      "win_rate_pct": 45.6,
+      "breakout_hit_pct": 75.6,
+      "stop_hit_pct": 46.6
+    },
+    {
+      "label": "VCP分=2",
+      "n": 182,
+      "avg_r20": -4.28,
+      "avg_excess20": -3.32,
+      "median_excess20": -1.11,
+      "win_rate_pct": 47.8,
+      "breakout_hit_pct": 75.3,
+      "stop_hit_pct": 47.8
+    },
+    {
+      "label": "VCP分=3",
+      "n": 82,
+      "avg_r20": -3.62,
+      "avg_excess20": -2.54,
+      "median_excess20": -2.37,
+      "win_rate_pct": 40.2,
+      "breakout_hit_pct": 69.5,
+      "stop_hit_pct": 52.4
+    }
+  ],
+  "by_rs": [
+    {
+      "label": "RS<30",
+      "n": 176,
+      "avg_r20": -0.32,
+      "avg_excess20": 0.82,
+      "median_excess20": 1.88,
+      "win_rate_pct": 55.7,
+      "breakout_hit_pct": 76.7,
+      "stop_hit_pct": 42.0
+    },
+    {
+      "label": "RS 30-49",
+      "n": 123,
+      "avg_r20": -1.79,
+      "avg_excess20": -0.39,
+      "median_excess20": 1.31,
+      "win_rate_pct": 56.1,
+      "breakout_hit_pct": 74.8,
+      "stop_hit_pct": 33.3
+    },
+    {
+      "label": "RS 50-69",
+      "n": 108,
+      "avg_r20": -4.08,
+      "avg_excess20": -3.04,
+      "median_excess20": -0.64,
+      "win_rate_pct": 44.4,
+      "breakout_hit_pct": 76.9,
+      "stop_hit_pct": 44.4
+    },
+    {
+      "label": "RS>=70",
+      "n": 140,
+      "avg_r20": -9.45,
+      "avg_excess20": -8.25,
+      "median_excess20": -8.61,
+      "win_rate_pct": 24.3,
+      "breakout_hit_pct": 70.0,
+      "stop_hit_pct": 70.7
+    }
+  ],
+  "weeks_without_excess": 12,
+  "verdict": "仅观察",
+  "verdict_reason": "滚动 60 日平均超额为负且连续 12 周无超额",
+  "one_liner": "VCP 池近 60 日 n=547，20 日超额 -2.54%，胜率 45.5% → 仅观察",
+  "caveats": "窗口重叠、未计交易成本、单一区间样本；为诊断性核算，不构成投资建议"
+}
