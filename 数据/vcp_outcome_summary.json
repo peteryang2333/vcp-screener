@@ -1,98 +1,98 @@
 {
   "schema": "vcp_outcomes/v1",
-  "generated_at_utc": "2026-11-21T08:08:05.710806+00:00",
-  "cache_last_bar": "2026-11-20",
+  "generated_at_utc": "2026-11-24T11:09:16.645149+00:00",
+  "cache_last_bar": "2026-11-23",
   "signal_date_basis": "历史 vcp_US_*.txt 用文件名运行日；2026-11-14 起 最新_US.txt 用价缓存数据日",
-  "total_signals": 4897,
+  "total_signals": 4967,
   "complete": 4172,
-  "pending": 725,
+  "pending": 795,
   "rolling_60d": {
     "label": "rolling_60d",
-    "n": 588,
-    "avg_r20": -4.5,
-    "avg_excess20": -1.92,
-    "median_excess20": 0.02,
-    "win_rate_pct": 50.0,
-    "breakout_hit_pct": 78.4,
-    "stop_hit_pct": 49.8
+    "n": 551,
+    "avg_r20": -4.81,
+    "avg_excess20": -2.05,
+    "median_excess20": 0.05,
+    "win_rate_pct": 50.1,
+    "breakout_hit_pct": 77.9,
+    "stop_hit_pct": 51.0
   },
   "by_score": [
     {
       "label": "VCP分=1",
-      "n": 316,
-      "avg_r20": -4.24,
-      "avg_excess20": -1.54,
-      "median_excess20": -0.12,
-      "win_rate_pct": 49.4,
-      "breakout_hit_pct": 78.8,
-      "stop_hit_pct": 50.0
+      "n": 300,
+      "avg_r20": -4.54,
+      "avg_excess20": -1.69,
+      "median_excess20": -0.22,
+      "win_rate_pct": 49.3,
+      "breakout_hit_pct": 78.3,
+      "stop_hit_pct": 51.3
     },
     {
       "label": "VCP分=2",
-      "n": 193,
-      "avg_r20": -4.84,
-      "avg_excess20": -2.52,
-      "median_excess20": 1.38,
-      "win_rate_pct": 52.3,
-      "breakout_hit_pct": 78.8,
-      "stop_hit_pct": 47.7
+      "n": 177,
+      "avg_r20": -5.23,
+      "avg_excess20": -2.7,
+      "median_excess20": 1.61,
+      "win_rate_pct": 52.0,
+      "breakout_hit_pct": 78.5,
+      "stop_hit_pct": 48.6
     },
     {
       "label": "VCP分=3",
-      "n": 79,
-      "avg_r20": -4.73,
-      "avg_excess20": -1.96,
-      "median_excess20": -1.62,
-      "win_rate_pct": 46.8,
-      "breakout_hit_pct": 75.9,
-      "stop_hit_pct": 54.4
+      "n": 74,
+      "avg_r20": -4.9,
+      "avg_excess20": -1.93,
+      "median_excess20": -1.09,
+      "win_rate_pct": 48.6,
+      "breakout_hit_pct": 74.3,
+      "stop_hit_pct": 55.4
     }
   ],
   "by_rs": [
     {
       "label": "RS<30",
-      "n": 181,
-      "avg_r20": -1.14,
-      "avg_excess20": 1.35,
-      "median_excess20": 2.09,
-      "win_rate_pct": 60.2,
-      "breakout_hit_pct": 82.3,
-      "stop_hit_pct": 47.0
+      "n": 168,
+      "avg_r20": -1.29,
+      "avg_excess20": 1.4,
+      "median_excess20": 2.15,
+      "win_rate_pct": 60.7,
+      "breakout_hit_pct": 82.1,
+      "stop_hit_pct": 47.6
     },
     {
       "label": "RS 30-49",
-      "n": 139,
-      "avg_r20": -2.43,
+      "n": 130,
+      "avg_r20": -2.61,
       "avg_excess20": 0.26,
-      "median_excess20": 2.86,
-      "win_rate_pct": 60.4,
-      "breakout_hit_pct": 79.1,
-      "stop_hit_pct": 34.5
+      "median_excess20": 3.3,
+      "win_rate_pct": 60.0,
+      "breakout_hit_pct": 78.5,
+      "stop_hit_pct": 35.4
     },
     {
       "label": "RS 50-69",
-      "n": 107,
-      "avg_r20": -4.41,
-      "avg_excess20": -1.73,
+      "n": 99,
+      "avg_r20": -4.93,
+      "avg_excess20": -2.01,
       "median_excess20": -0.16,
       "win_rate_pct": 49.5,
-      "breakout_hit_pct": 79.4,
-      "stop_hit_pct": 46.7
+      "breakout_hit_pct": 79.8,
+      "stop_hit_pct": 48.5
     },
     {
       "label": "RS>=70",
-      "n": 161,
-      "avg_r20": -10.14,
-      "avg_excess20": -7.61,
-      "median_excess20": -8.71,
-      "win_rate_pct": 29.8,
-      "breakout_hit_pct": 72.7,
-      "stop_hit_pct": 68.3
+      "n": 154,
+      "avg_r20": -10.43,
+      "avg_excess20": -7.78,
+      "median_excess20": -9.09,
+      "win_rate_pct": 30.5,
+      "breakout_hit_pct": 71.4,
+      "stop_hit_pct": 69.5
     }
   ],
   "weeks_without_excess": 0,
   "verdict": "仅观察",
-  "verdict_reason": "滚动 60 日平均超额为负（-1.92%）",
-  "one_liner": "VCP 池近 60 日 n=588，20 日超额 -1.92%，胜率 50.0% → 仅观察",
+  "verdict_reason": "滚动 60 日平均超额为负（-2.05%）",
+  "one_liner": "VCP 池近 60 日 n=551，20 日超额 -2.05%，胜率 50.1% → 仅观察",
   "caveats": "窗口重叠、未计交易成本、单一区间样本；为诊断性核算，不构成投资建议"
 }
