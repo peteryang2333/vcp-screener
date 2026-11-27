@@ -1,11 +1,11 @@
 {
   "schema": "vcp_outcomes/v1",
-  "generated_at_utc": "2026-11-26T09:00:53.176697+00:00",
+  "generated_at_utc": "2026-11-27T09:07:10.426302+00:00",
   "cache_last_bar": "2026-11-25",
   "signal_date_basis": "历史 vcp_US_*.txt 用文件名运行日；2026-11-14 起 最新_US.txt 用价缓存数据日",
-  "total_signals": 5050,
+  "total_signals": 5099,
   "complete": 4234,
-  "pending": 816,
+  "pending": 865,
   "rolling_60d": {
     "label": "rolling_60d",
     "n": 569,
